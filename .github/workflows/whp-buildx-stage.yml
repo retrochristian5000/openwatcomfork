@@ -4,11 +4,15 @@ on:
   push:
     paths:
       - ci/buildx.sh
+      - cmnvars.sh
+      - ci/tests/cmnvars-version.sh
       - ci/tests/buildx-stage.sh
       - .github/workflows/whp-buildx-stage.yml
   pull_request:
     paths:
       - ci/buildx.sh
+      - cmnvars.sh
+      - ci/tests/cmnvars-version.sh
       - ci/tests/buildx-stage.sh
       - .github/workflows/whp-buildx-stage.yml
   workflow_dispatch:
@@ -29,5 +33,9 @@ jobs:
         run: |
           sh -n ci/buildx.sh
           sh -n ci/tests/buildx-stage.sh
+          sh -n cmnvars.sh
+          sh -n ci/tests/cmnvars-version.sh
       - name: Mocked build stages (no compiler or linker bootstrap)
         run: sh ci/tests/buildx-stage.sh
+      - name: Host compiler version preflight (mocked)
+        run: sh ci/tests/cmnvars-version.sh
