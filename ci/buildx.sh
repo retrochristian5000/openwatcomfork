@@ -10,112 +10,115 @@
 
 bootutil_proc()
 {
-    #
-    # build new version of wmake for host system
-    #
-    mkdir $OWROOT/build/$OWOBJDIR
-    #
-    RC=-1
+    # Bootstrapping is repeatable: a second invocation must not fail just
+    # because the build directories already exist. No compiler/linker run
+    # is treated as successful merely because a later command succeeded.
+    mkdir -p "$OWROOT/build/$OWOBJDIR" ||
+        return $?
+    mkdir -p "$OWROOT/bld/wmake/$OWOBJDIR" ||
+        return $?
+    cd "$OWROOT/bld/wmake/$OWOBJDIR" ||
+        return $?
+
     if [ "$OWTOOLS" = "WATCOM" ]; then
-        mkdir $OWROOT/bld/wmake/$OWOBJDIR
-        cd $OWROOT/bld/wmake/$OWOBJDIR
         if [ "$OWTESTBOOT" = "1" ]; then
             wmake -m -f ../wmake EXTRADEF=-DTESTBOOT
         else
             wmake -m -f ../wmake
         fi
-        RC=$?
     else
-        case `uname` in
-            Darwin)
-                mkdir $OWROOT/bld/wmake/$OWOBJDIR
-                cd $OWROOT/bld/wmake/$OWOBJDIR
-                if [ "$OWTESTBOOT" = "1" ]; then
-                    make -f ../posmake TARGETDEF=-D__OSX__ EXTRADEF=-DTESTBOOT
-                else
-                    make -f ../posmake TARGETDEF=-D__OSX__
-                fi
-                RC=$?
-                ;;
-            *)
-                mkdir $OWROOT/bld/wmake/$OWOBJDIR
-                cd $OWROOT/bld/wmake/$OWOBJDIR
-                if [ "$OWTESTBOOT" = "1" ]; then
-                    make -f ../posmake TARGETDEF=-D__LINUX__ EXTRADEF=-DTESTBOOT
-                else
-                    make -f ../posmake TARGETDEF=-D__LINUX__
-                fi
-                RC=$?
-                ;;
+        case "$(uname -s)" in
+            Darwin) host_target=-D__OSX__ ;;
+            *) host_target=-D__LINUX__ ;;
         esac
+        if [ "$OWTESTBOOT" = "1" ]; then
+            make -f ../posmake "TARGETDEF=$host_target" EXTRADEF=-DTESTBOOT
+        else
+            make -f ../posmake "TARGETDEF=$host_target"
+        fi
     fi
-    if [ $RC -eq 0 ]; then
-        #
-        # build new verison of builder for host system
-        #
-        mkdir $OWROOT/bld/builder/$OWOBJDIR
-        cd $OWROOT/bld/builder/$OWOBJDIR
-        $OWROOT/build/$OWOBJDIR/wmake -f ../preboot
-        RC=$?
-    fi
+    RC=$?
+    [ "$RC" -eq 0 ] || return "$RC"
+
+    mkdir -p "$OWROOT/bld/builder/$OWOBJDIR" ||
+        return $?
+    cd "$OWROOT/bld/builder/$OWOBJDIR" ||
+        return $?
+    "$OWROOT/build/$OWOBJDIR/wmake" -f ../preboot
 }
 
 build_proc()
 {
     RC=0
+    if [ -z "${OWROOT:-}" ] || [ ! -f "$OWROOT/cmnvars.sh" ]; then
+        printf '%s\n' 'OpenWatcom: OWROOT/cmnvars.sh is required' >&2
+        return 2
+    fi
     export OWGHOSTSCRIPTPATH=:
 
-    . $OWROOT/cmnvars.sh
-
+    . "$OWROOT/cmnvars.sh" || return $?
     export OWVERBOSE=1
+    cd "$OWROOT/bld" || return $?
 
-    cd $OWROOT/bld
     case "$OWBUILD_STAGE" in
-        "boot")
+        boot)
             bootutil_proc
-            if [ $RC -eq 0 ]; then
-                if [ "$OWDOCTARGET" = "" ]; then
-                    cd $OWROOT/bld
+            RC=$?
+            if [ "$RC" -eq 0 ]; then
+                if [ -z "${OWDOCTARGET:-}" ]; then
+                    cd "$OWROOT/bld" || return $?
                     builder boot
                     RC=$?
                 else
-                    cd $OWROOT/bld/watcom
-                    builder boot
-                    cd $OWROOT/bld/builder
-                    builder boot
-                    cd $OWROOT/bld/whpcvt
-                    builder boot
-                    cd $OWROOT/bld/bmp2eps
-                    builder boot
-                    RC=$?
+                    # Stop on the FIRST failed document bootstrap.
+                    # The previous loop silently reported only the last
+                    # command's status, concealing costly intermediate failures.
+                    for section in watcom builder whpcvt bmp2eps; do
+                        cd "$OWROOT/bld/$section" || {
+                            RC=$?
+                            break
+                        }
+                        builder boot
+                        RC=$?
+                        [ "$RC" -eq 0 ] || break
+                    done
                 fi
             fi
             ;;
-        "build")
+        build)
             builder rel
             RC=$?
             ;;
-        "tests")
-            cd $OWTESTTARGET
+        tests)
+            cd "$OWTESTTARGET" || return $?
             builder -i test
-            #RC=$?
-            cat result.log
+            RC=$?
+            # The log is diagnostic: a successful cat never overrides a
+            # failed test; a missing log cannot erase the builder status.
+            if [ -f result.log ]; then
+                cat result.log
+                log_rc=$?
+                if [ "$RC" -eq 0 ]; then RC=$log_rc; fi
+            fi
             ;;
-        "docs")
-            builder docs $OWDOCTARGET
+        docs)
+            builder docs "$OWDOCTARGET"
             RC=$?
             ;;
-        "inst")
-            builder install $OWINSTTARGET
+        inst)
+            builder install "$OWINSTTARGET"
             RC=$?
             ;;
         *)
+            printf 'OpenWatcom: unsupported OWBUILD_STAGE: %s\n' "$OWBUILD_STAGE" >&2
+            RC=2
             ;;
     esac
-    cd $OWROOT
-    return $RC
+    cd "$OWROOT" || return $?
+    return "$RC"
 }
-if [ "$OWDEBUG" = "1" ]; then
+
+if [ "${OWDEBUG:-}" = "1" ]; then
     env | sort
 fi
-build_proc $*
+build_proc "$@"
