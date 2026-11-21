@@ -41,11 +41,16 @@ WMAKE
 chmod +x "$OWROOT/build/$OWOBJDIR/wmake"
 exit 0
 SH
-chmod +x "$mock/builder" "$mock/make"
+cat > "$mock/clang" <<'SH'
+#!/bin/sh
+exit 0
+SH
+chmod +x "$mock/builder" "$mock/make" "$mock/clang"
 
 export OWROOT="$fake"
 export OWOBJDIR=binbuild
 export OWTOOLS=CLANG
+export OWCLANG="$mock/clang"
 export OWTESTBOOT=0
 export OWTESTTARGET="$fake/bld"
 export OWDOCTARGET=
@@ -116,6 +121,21 @@ unset OW_MOCK_FAIL_WMAKE
 # Repeating bootstrap works even with existing output directories.
 expect_status 0 sh "$root/ci/buildx.sh"
 expect_status 0 sh "$root/ci/buildx.sh"
+
+# The selected Clang must compile both bootstrap utilities rather than
+# silently switching to the platform's default cc.
+case "$(uname -s)" in
+    Darwin) expected_target=-D__OSX__ ;;
+    *) expected_target=-D__LINUX__ ;;
+esac
+grep -F "make -f ../posmake TARGETDEF=$expected_target CC=$OWCLANG" "$OW_MOCK_LOG" >/dev/null
+grep -F "wmake -f ../preboot CL=$OWCLANG -g -O2 -o" "$OW_MOCK_LOG" >/dev/null
+grep -F '$(name_exe)' "$OW_MOCK_LOG" >/dev/null
+
+# A missing explicitly configured compiler is a hard failure.
+OWCLANG="$mock/missing-clang"
+expect_status 127 sh "$root/ci/buildx.sh"
+OWCLANG="$mock/clang"
 
 # Documentation-specific boot must stop on the FIRST failed subtree,
 # not report success because the final builder boot happened to pass.
