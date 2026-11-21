@@ -57,6 +57,12 @@ export OWDOCTARGET=
 export OWINSTTARGET=
 export OW_MOCK_LOG="$tmp/commands"
 export PATH="$mock:$PATH"
+
+# Later stages must resolve the locally bootstrapped binaries, not the
+# deliberately available PATH builder. Seed mocks for tests-before-boot.
+mkdir -p "$fake/build/$OWOBJDIR"
+cp "$mock/builder" "$fake/build/$OWOBJDIR/builder"
+"$mock/make" seed
 : > "$OW_MOCK_LOG"
 
 expect_status() {
@@ -108,8 +114,26 @@ export OW_MOCK_FAIL_CMD='install rel'
 expect_status 17 sh "$root/ci/buildx.sh"
 unset OW_MOCK_FAIL_CMD
 
-# Bootstrap must fail if make or preboot wmake failed.
+# A PATH builder is not an acceptable replacement for the local one.
+export OWBUILD_STAGE=build
+rm "$fake/build/$OWOBJDIR/builder"
+expect_status 127 sh "$root/ci/buildx.sh"
+grep -q 'local builder not executable' "$tmp/last-output"
+cp "$mock/builder" "$fake/build/$OWOBJDIR/builder"
+
+# A PATH wmake must not mask an absent locally bootstrapped wmake.
+rm "$fake/build/$OWOBJDIR/wmake"
+expect_status 127 sh "$root/ci/buildx.sh"
+grep -q 'local wmake not executable' "$tmp/last-output"
+"$mock/make" seed
+: > "$OW_MOCK_LOG"
+
+# Bootstrap must fail if the selected host make or preboot wmake failed.
 export OWBUILD_STAGE=boot
+export OWHOSTMAKE="$mock/missing-make"
+expect_status 127 sh "$root/ci/buildx.sh"
+grep -q 'POSIX bootstrap make not found' "$tmp/last-output"
+export OWHOSTMAKE="$mock/make"
 export OWDOCTARGET=
 export OW_MOCK_FAIL_MAKE=1
 expect_status 19 sh "$root/ci/buildx.sh"
@@ -129,6 +153,8 @@ case "$(uname -s)" in
     *) expected_target=-D__LINUX__ ;;
 esac
 grep -F "make -f ../posmake TARGETDEF=$expected_target CC=$OWCLANG" "$OW_MOCK_LOG" >/dev/null
+# Both preboot and release/test commands run through local tools.
+grep -F "wmake -f ../preboot" "$OW_MOCK_LOG" >/dev/null
 grep -F "wmake -f ../preboot CL=$OWCLANG -g -O2 -o" "$OW_MOCK_LOG" >/dev/null
 grep -F '$(name_exe)' "$OW_MOCK_LOG" >/dev/null
 
