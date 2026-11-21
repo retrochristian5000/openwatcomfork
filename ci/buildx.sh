@@ -31,10 +31,24 @@ bootutil_proc()
             Darwin) host_target=-D__OSX__ ;;
             *) host_target=-D__LINUX__ ;;
         esac
-        if [ "$OWTESTBOOT" = "1" ]; then
-            make -f ../posmake "TARGETDEF=$host_target" EXTRADEF=-DTESTBOOT
+        # The first-stage POSIX makefile invokes $(CC), not OWCLANG.
+        # Select the same host compiler used by cmnvars.sh when CLANG
+        # is requested; never silently fall back to the platform cc.
+        if [ "$OWTOOLS" = "CLANG" ]; then
+            host_cc=$OWCLANG
+            [ -n "$host_cc" ] || host_cc=clang
+            if ! command -v "$host_cc" >/dev/null 2>&1; then
+                printf 'OpenWatcom: selected host Clang not found: %s\n' "$host_cc" >&2
+                return 127
+            fi
+            set -- "CC=$host_cc"
         else
-            make -f ../posmake "TARGETDEF=$host_target"
+            set --
+        fi
+        if [ "$OWTESTBOOT" = "1" ]; then
+            make -f ../posmake "TARGETDEF=$host_target" "$@" EXTRADEF=-DTESTBOOT
+        else
+            make -f ../posmake "TARGETDEF=$host_target" "$@"
         fi
     fi
     RC=$?
@@ -44,7 +58,14 @@ bootutil_proc()
         return $?
     cd "$OWROOT/bld/builder/$OWOBJDIR" ||
         return $?
-    "$OWROOT/build/$OWOBJDIR/wmake" -f ../preboot
+    if [ "$OWTOOLS" = "CLANG" ]; then
+        # preboot defaults to cc as well; keep the host compiler
+        # consistent through both bootstrap utilities.
+        "$OWROOT/build/$OWOBJDIR/wmake" -f ../preboot \
+            "CL=$host_cc -g -O2 -o\$(name_exe)"
+    else
+        "$OWROOT/build/$OWOBJDIR/wmake" -f ../preboot
+    fi
 }
 
 build_proc()
