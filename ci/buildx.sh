@@ -45,15 +45,26 @@ bootutil_proc()
         else
             set --
         fi
+        # Host make is required only to compile the first wmake.
+        host_make=${OWHOSTMAKE:-make}
+        if ! command -v "$host_make" >/dev/null 2>&1; then
+            printf 'OpenWatcom: POSIX bootstrap make not found: %s\n' "$host_make" >&2
+            return 127
+        fi
         if [ "$OWTESTBOOT" = "1" ]; then
-            make -f ../posmake "TARGETDEF=$host_target" "$@" EXTRADEF=-DTESTBOOT
+            "$host_make" -f ../posmake "TARGETDEF=$host_target" "$@" EXTRADEF=-DTESTBOOT
         else
-            make -f ../posmake "TARGETDEF=$host_target" "$@"
+            "$host_make" -f ../posmake "TARGETDEF=$host_target" "$@"
         fi
     fi
     RC=$?
     [ "$RC" -eq 0 ] || return "$RC"
 
+    # Do not use a different wmake via the inherited PATH.
+    if [ ! -x "$OWROOT/build/$OWOBJDIR/wmake" ]; then
+        printf 'OpenWatcom: bootstrap did not produce local wmake: %s\n' "$OWROOT/build/$OWOBJDIR/wmake" >&2
+        return 127
+    fi
     mkdir -p "$OWROOT/bld/builder/$OWOBJDIR" ||
         return $?
     cd "$OWROOT/bld/builder/$OWOBJDIR" ||
@@ -66,6 +77,23 @@ bootutil_proc()
     else
         "$OWROOT/build/$OWOBJDIR/wmake" -f ../preboot
     fi
+}
+
+# All later stages require the locally bootstrapped builder and wmake.
+# cmnvars.sh prepends their directory to PATH for builder subcommands.
+run_builder()
+{
+    local_builder="$OWROOT/build/$OWOBJDIR/builder"
+    if [ ! -x "$local_builder" ]; then
+        printf 'OpenWatcom: local builder not executable: %s\n' "$local_builder" >&2
+        return 127
+    fi
+    if [ "$OWTOOLS" != "WATCOM" ] &&
+       [ ! -x "$OWROOT/build/$OWOBJDIR/wmake" ]; then
+        printf 'OpenWatcom: local wmake not executable: %s\n' "$OWROOT/build/$OWOBJDIR/wmake" >&2
+        return 127
+    fi
+    "$local_builder" "$@"
 }
 
 build_proc()
@@ -88,7 +116,7 @@ build_proc()
             if [ "$RC" -eq 0 ]; then
                 if [ -z "${OWDOCTARGET:-}" ]; then
                     cd "$OWROOT/bld" || return $?
-                    builder boot
+                    run_builder boot
                     RC=$?
                 else
                     # Stop on the FIRST failed document bootstrap.
@@ -99,7 +127,7 @@ build_proc()
                             RC=$?
                             break
                         }
-                        builder boot
+                        run_builder boot
                         RC=$?
                         [ "$RC" -eq 0 ] || break
                     done
@@ -107,12 +135,12 @@ build_proc()
             fi
             ;;
         build)
-            builder rel
+            run_builder rel
             RC=$?
             ;;
         tests)
             cd "$OWTESTTARGET" || return $?
-            builder -i test
+            run_builder -i test
             RC=$?
             # The log is diagnostic: a successful cat never overrides a
             # failed test; a missing log cannot erase the builder status.
@@ -123,11 +151,11 @@ build_proc()
             fi
             ;;
         docs)
-            builder docs "$OWDOCTARGET"
+            run_builder docs "$OWDOCTARGET"
             RC=$?
             ;;
         inst)
-            builder install "$OWINSTTARGET"
+            run_builder install "$OWINSTTARGET"
             RC=$?
             ;;
         *)
