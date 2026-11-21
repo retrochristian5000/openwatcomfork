@@ -16,7 +16,7 @@ if [ -z "$OWOBJDIR" ]; then export OWOBJDIR=binbuild; fi
 # Set environment variables
 # Set up default path information variable
 if [ -z "$OWDEFPATH" ]; then
-    export OWDEFPATH="$PATH":
+    export OWDEFPATH="$PATH"
     if [ -n "$INCLUDE" ]; then export OWDEFINCLUDE=$INCLUDE; fi
     if [ -n "$WATCOM" ]; then export OWDEFWATCOM=$WATCOM; fi
 fi
