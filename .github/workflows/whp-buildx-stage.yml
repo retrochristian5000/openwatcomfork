@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - ci/buildx.sh
+      - ci/macos-bootstrap.sh
+      - ci/tests/macos-bootstrap.sh
       - cmnvars.sh
       - ci/tests/cmnvars-version.sh
       - ci/tests/buildx-stage.sh
@@ -11,6 +13,8 @@ on:
   pull_request:
     paths:
       - ci/buildx.sh
+      - ci/macos-bootstrap.sh
+      - ci/tests/macos-bootstrap.sh
       - cmnvars.sh
       - ci/tests/cmnvars-version.sh
       - ci/tests/buildx-stage.sh
@@ -32,6 +36,8 @@ jobs:
       - name: POSIX shell syntax
         run: |
           sh -n ci/buildx.sh
+          sh -n ci/macos-bootstrap.sh
+          sh -n ci/tests/macos-bootstrap.sh
           sh -n ci/tests/buildx-stage.sh
           sh -n cmnvars.sh
           sh -n ci/tests/cmnvars-version.sh
@@ -39,3 +45,5 @@ jobs:
         run: sh ci/tests/buildx-stage.sh
       - name: Host compiler version preflight (mocked)
         run: sh ci/tests/cmnvars-version.sh
+      - name: macOS bootstrap entrypoint (mocked, no compiler build)
+        run: sh ci/tests/macos-bootstrap.sh

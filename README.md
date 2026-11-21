@@ -25,6 +25,35 @@ Other general Discord server for "Open Watcom" exists [invite link](https://disc
 
 [`Official OpenWatcom site`](http://openwatcom.org) only WEB site is up, all other services (bugzilla, Wiki, News server, Perforce) is down for long time, it looks like it is dead.
 
+### Native macOS source bootstrap (Apple Silicon and Intel)
+
+On macOS, this fork provides a single entrypoint for the existing two-stage
+OpenWatcom build. Install Apple's Command Line Tools (or select an Xcode
+installation containing the tools) first; full Xcode is not required solely
+for the native command-line compiler and SDK. From the source root:
+
+```sh
+sh ci/macos-bootstrap.sh --check
+sh ci/macos-bootstrap.sh
+```
+
+The preflight discovers the active macOS SDK and Apple Clang through
+`xcrun`, without changing `SDKROOT`, `DEVELOPER_DIR`, the selected
+SDK version, or the host architecture. To use a previously selected
+native Clang or make executable, set `OWCLANG` or `OWHOSTMAKE`
+explicitly. The first stage uses POSIX host `make` to build local
+OpenWatcom `wmake`; all later stages use the local `wmake` and
+`builder`. Release compiler/linker outputs are checked in `rel/armo64`
+on Apple Silicon or `rel/bino64` on Intel, together with DOS headers
+and 16-bit libraries.
+
+The helper rejects unsupported source/Clang paths containing spaces or
+`=`, which the underlying build is not prepared to handle. It does not
+install a binary distribution, invoke an emulator, change system developer
+settings, or guarantee that DOS programs run on macOS. Its mocked
+regression runs on Linux as well; a full native macOS release build is a
+separate validation step.
+
 Source Tree Layout
 ------------------
 
