@@ -30,7 +30,8 @@ export OWROOT="$tmp/root"
 export OWOBJDIR=binbuild
 export OWTOOLS=CLANG
 export OWCLANG="$tmp/bin/clang"
-export OWDEFPATH="$PATH"
+export OW_TEST_ORIGINAL_PATH="$PATH"
+unset OWDEFPATH
 export INCLUDE=
 export WATCOM=
 export OWDEFINCLUDE=
@@ -51,7 +52,7 @@ check_code() {
 }
 
 export OW_MOCK_MODE=good
-check_code 0 sh -c '. "$1"; [ "$OWTOOLSVER" = 19 ]' sh "$root/cmnvars.sh"
+check_code 0 sh -c '. "$1"; [ "$OWTOOLSVER" = 19 ] && [ "$OWDEFPATH" = "$OW_TEST_ORIGINAL_PATH" ]' sh "$root/cmnvars.sh"
 [ ! -e ./getversi.gc ] && [ ! -e ./getversi.sh ]
 
 # Even a previously generated successful file cannot mask a failed
